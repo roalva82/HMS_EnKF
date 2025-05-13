@@ -1,0 +1,121 @@
+import glob
+import os
+import zipfile
+import re
+import numpy as np
+import xml.etree.ElementTree as ET
+import pandas as pd
+import xarray as xr
+
+# Paths
+path_to_zip_files = './'
+fields = ['Canopy Storage', 'Soil Storage']
+path_to_xml_file = './input.xml'
+
+# Get list of zip files in the target directory
+zip_state_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_states_*.zip'))
+zip_xml_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_simulation_*.zip'))
+
+def extract_state(text, keyword):
+    """Extract numeric values associated with a given keyword."""
+    pattern = fr"{re.escape(keyword)}:\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+    return [float(val) for val in re.findall(pattern, text)]
+
+def extract_state_name(text, keyword):
+    """Extract string names associated with a given keyword."""
+    pattern = r'Subbasin:\s*([A-Za-z0-9.]+)'
+    return [string(el) for el in re.findall(pattern, text)]
+
+def read_states(zip_files, fields):
+    # Prepare a list to store all results for each zip file
+    results = []
+
+    # Loop through zip files (skip the first one)
+    for zip_path in zip_files[1:]:
+        all_field_values = []  # To store all values for the fields in the current zip file
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            try:
+                # Ensure the file exists before attempting to read
+                with zip_ref.open('Input.state') as file:
+                    text = file.read().decode('utf-8')
+            except KeyError:
+                print(f"Warning: 'Input.state' not found in {zip_path}")
+                continue  # Skip if file doesn't exist
+
+        # For each field, extract its values and store them in a list
+        for field in fields:
+            state_values = extract_state(text, field)
+            all_field_values.extend(state_values)  # Add all values for this field to the list
+
+        # Append the list of field values (flattened) for the current zip file to results
+        results.append(all_field_values)
+        #print(np.shape(results))
+
+    # Convert the final results list into a NumPy array
+    final_array = np.array(results, dtype=object)
+
+    # Output the resulting array
+    return(final_array)
+
+def read_flow(zip_files):
+
+    ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
+
+    # Initialize dictionary to store time series per file
+    data_dict = {}
+
+    for zip_path in zip_files:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            try:
+                with zip_ref.open('simulation.xml') as xml_file:
+                    tree = ET.parse(xml_file)
+                    root = tree.getroot()
+
+                    for series in root.findall('.//pi:timeSeries', ns):
+                        param = series.find('.//pi:parameter', ns)
+                        if param is not None and param.text == 'FLOW':
+                            point = series.findall('.//pi:event', ns)[-1] # takes the last
+                            date = point.attrib['date']
+                            time = point.attrib['time']
+                            value = point.attrib['value']
+
+                            label = os.path.basename(zip_path)
+                            data_dict[label] = pd.Series(data=value)
+                            pd.Series(data=value)
+
+            except KeyError:
+                print(f"Warning: 'simulation.xml' not found in {zip_path}")
+                continue  # Skip if file doesn't exist
+
+    # Combine all series into a DataFrame, aligned by timestamps
+    df = pd.DataFrame(data_dict)
+    print(df)
+    return(df)
+
+def enKF(forecast,obs_operator,observation):
+    P = np.cov(forecast)
+    R = np.cov(observation)
+    num = np.dot(P,np.transpose(obs_operator))
+    den = np.dot(obs_operator,num) + R
+    temp = np.linalg.inv(den)
+    gain = np.dot(num,temp)
+    A = forecast + np.dot(gain,(observation-np.dot(obs_operator,forecast)))
+    return A
+
+read_flow(zip_xml_files)
+
+### STEP 1: READ ALL THE STATES FROM ZIP FILES
+
+
+### STEP 2: READ ALL THE OBSERVATIONS
+# read file dataIn.nc using xarray library
+ds = xr.open_dataset('dataIn.nc')
+#Qobs = ds['Qobs'] 
+
+### STEP 3: RUN THE ASSIMILATION USING ENKF
+# run the assimilation procedure
+
+### STEP 4: WRITE RESULTS BACK INTO TH BASIN.STATE FILE
+
+
