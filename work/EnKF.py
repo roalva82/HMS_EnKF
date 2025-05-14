@@ -71,16 +71,13 @@ def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
                     tree = ET.parse(xml_file)
                     root = tree.getroot()
 
-                    for series in root.findall('.//pi:timeSeries', ns):
-                        param = series.find('.//pi:parameter', ns)
+                    for series in root.findall('.//pi:series', ns):
+                        param = series.find('.//pi:parameterId', ns)
                         if param is not None and param.text == 'FLOW':
-                            print('hola')
                             point = series.findall('.//pi:event', ns)[-1] # takes the last
                             date = point.attrib['date']
                             time = point.attrib['time']
                             value = point.attrib['value']
-
-                            print(date)
 
                             label = os.path.basename(zip_path)
                             data_dict[label] = pd.Series(data=value)
@@ -92,7 +89,6 @@ def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
 
     # Combine all series into a DataFrame, aligned by timestamps
     df = pd.DataFrame(data_dict)
-    print(df)
     return(df)
 
 def enKF(forecast,obs_operator,observation):
