@@ -9,19 +9,19 @@ import xarray as xr
 
 # Paths
 path_to_zip_files = './'
+path_to_xml_files = './'
 fields = ['Canopy Storage', 'Soil Storage']
-path_to_xml_file = './input.xml'
 
 # Get list of zip files in the target directory
 zip_state_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_states_*.zip'))
-zip_xml_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_simulation_*.zip'))
+zip_xml_files = glob.glob(os.path.join(path_to_xml_files, 'ensemble_simulation_*.zip'))
 
 def extract_state(text, keyword):
     """Extract numeric values associated with a given keyword."""
     pattern = fr"{re.escape(keyword)}:\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
     return [float(val) for val in re.findall(pattern, text)]
 
-def extract_state_name(text, keyword):
+def extract_state_name(text, keyword): #NO FUNCTIONA TODAVIA
     """Extract string names associated with a given keyword."""
     pattern = r'Subbasin:\s*([A-Za-z0-9.]+)'
     return [string(el) for el in re.findall(pattern, text)]
@@ -50,7 +50,6 @@ def read_states(zip_files, fields):
 
         # Append the list of field values (flattened) for the current zip file to results
         results.append(all_field_values)
-        #print(np.shape(results))
 
     # Convert the final results list into a NumPy array
     final_array = np.array(results, dtype=object)
@@ -58,7 +57,7 @@ def read_states(zip_files, fields):
     # Output the resulting array
     return(final_array)
 
-def read_flow(zip_files):
+def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
 
     ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
 
@@ -75,10 +74,13 @@ def read_flow(zip_files):
                     for series in root.findall('.//pi:timeSeries', ns):
                         param = series.find('.//pi:parameter', ns)
                         if param is not None and param.text == 'FLOW':
+                            print('hola')
                             point = series.findall('.//pi:event', ns)[-1] # takes the last
                             date = point.attrib['date']
                             time = point.attrib['time']
                             value = point.attrib['value']
+
+                            print(date)
 
                             label = os.path.basename(zip_path)
                             data_dict[label] = pd.Series(data=value)
@@ -103,9 +105,16 @@ def enKF(forecast,obs_operator,observation):
     A = forecast + np.dot(gain,(observation-np.dot(obs_operator,forecast)))
     return A
 
+#read_states(zip_state_files, fields)
+
 read_flow(zip_xml_files)
 
-### STEP 1: READ ALL THE STATES FROM ZIP FILES
+
+### STEP 1: READ ALL THE STATES FROM ZIP FILES - STATES AND FLOW 
+#read input.state
+#read simulation.xml
+#build extended array
+#PARA FINALES DE MAYO!
 
 
 ### STEP 2: READ ALL THE OBSERVATIONS
@@ -113,8 +122,10 @@ read_flow(zip_xml_files)
 ds = xr.open_dataset('dataIn.nc')
 #Qobs = ds['Qobs'] 
 
+
 ### STEP 3: RUN THE ASSIMILATION USING ENKF
 # run the assimilation procedure
+
 
 ### STEP 4: WRITE RESULTS BACK INTO TH BASIN.STATE FILE
 
