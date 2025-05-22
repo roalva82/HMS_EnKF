@@ -26,6 +26,41 @@ def extract_state_name(text, keyword): #NO FUNCTIONA TODAVIA
     pattern = r'Subbasin:\s*([A-Za-z0-9.]+)'
     return [string(el) for el in re.findall(pattern, text)]
 
+
+def read_states(zip_files, fields):
+    results = []
+    # Loop through zip files (skip the first one)
+    for zip_path in zip_files[1:]:
+        all_field_values = []  # To store all values for the fields in the current zip file
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            try:
+                with zip_ref.open('Input.state') as file:
+                    text = file.read().decode('utf-8')
+            except KeyError:
+                print(f"Warning: 'Input.state' not found in {zip_path}")
+                continue  # Skip if file doesn't exist
+
+        #split the file in "Subbasin: ... end:" blocks    
+        blocks = re.findall(r'Subbasin:[\s\S]*?End:', text)
+        for block in blocks:
+            subbasin = re.findall(r'Subbasin:\s*([A-Za-z0-9.]+)', block)
+            for variable in fields:
+                pattern = variable + r'\s*([-+]?\d*\.?\d+([eE][-+]?\d+)?)'
+                values = re.findall(pattern, block)
+                k = 0
+                variable = variable.replace(":","") + "_"
+                for value in values:
+                    fileName = str.replace(zip_ref.filename.split("\\")[-1],".zip","")
+                    row = [fileName, subbasin[0], variable + str(k), value[0]]
+                    k += 1
+                    results.append(row)
+   
+    finalDataFrame = pd.DataFrame(results, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
+    finalDataFrame.to_csv("variables1.csv", header=True, index=True)  
+    finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
+    finalDataFrame.to_csv("variables2.csv", header=True, index=True)  
+    return finalDataFrame
+
 def read_states(zip_files, fields):
     # Prepare a list to store all results for each zip file
     results = []
