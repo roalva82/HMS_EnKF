@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime
-
+import pandas as pd
 
 # Path to your XML file
 xml_file = 'simulation.xml'
@@ -15,7 +15,7 @@ root = tree.getroot()
 ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
 
 # Find all time series entries with parameterId == FLOW
-flow_series = []
+flow_series = pd.array(['date','time','value'])
 
 for series in root.findall('.//pi:series', ns):
     param = series.find('.//pi:parameterId', ns)
@@ -25,10 +25,11 @@ for series in root.findall('.//pi:series', ns):
             date = point.attrib['date']
             time = point.attrib['time']
             value = point.attrib['value']
+            location = series.find('.//pi:locationId', ns).text
             if date is not None and time is not None and value is not None:
                 format = '%Y-%m-%d_%H:%M:%S'
                 temp = datetime.strptime(date + '_' + time, format)
-                values.append((temp, value))
-        flow_series.append(values)
+                values.append((temp, value, location))
+        flow_series['value'] = 
 
 print(flow_series[0])

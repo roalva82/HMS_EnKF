@@ -61,7 +61,7 @@ def read_states(zip_files, fields):
     finalDataFrame.to_csv("variables2.csv", header=True, index=True)  
     return finalDataFrame
 
-def read_states(zip_files, fields):
+def read_states_OLD(zip_files, fields):
     # Prepare a list to store all results for each zip file
     results = []
 
@@ -92,8 +92,7 @@ def read_states(zip_files, fields):
     # Output the resulting array
     return(final_array)
 
-def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
-
+def read_flow(zip_files):
     ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
 
     # Initialize dictionary to store time series per file
@@ -109,7 +108,7 @@ def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
                     for series in root.findall('.//pi:series', ns):
                         param = series.find('.//pi:parameterId', ns)
                         if param is not None and param.text == 'FLOW':
-                            point = series.findall('.//pi:event', ns)[-1] # takes the last
+                            point = series.findall('.//pi:event', ns)[-1] # takes the last value
                             date = point.attrib['date']
                             time = point.attrib['time']
                             value = point.attrib['value']
@@ -117,6 +116,22 @@ def read_flow(zip_files): #NO FUNCTIONA TODAVIA - IMPORTANTE
                             label = os.path.basename(zip_path)
                             data_dict[label] = pd.Series(data=value)
                             pd.Series(data=value)
+
+
+for series in root.findall('.//pi:series', ns):
+    param = series.find('.//pi:parameterId', ns)
+    if param is not None and param.text == 'FLOW':
+        values = []
+        for point in series.findall('.//pi:event', ns):
+            date = point.attrib['date']
+            time = point.attrib['time']
+            value = point.attrib['value']
+            if date is not None and time is not None and value is not None:
+                format = '%Y-%m-%d_%H:%M:%S'
+                temp = datetime.strptime(date + '_' + time, format)
+                values.append((temp, value))
+        flow_series.append(values)
+
 
             except KeyError:
                 print(f"Warning: 'simulation.xml' not found in {zip_path}")
@@ -150,7 +165,7 @@ read_flow(zip_xml_files)
 
 ### STEP 2: READ ALL THE OBSERVATIONS
 # read file dataIn.nc using xarray library
-ds = xr.open_dataset('dataIn.nc')
+#ds = xr.open_dataset('dataIn.nc')
 #Qobs = ds['Qobs'] 
 
 
