@@ -49,10 +49,10 @@ def read_states(zip_files, fields):
                     results.append(row)
    
     finalDataFrame = pd.DataFrame(results, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
-    finalDataFrame.to_csv("variables1.csv", header=True, index=True)  
+    #finalDataFrame.to_csv("variables1.csv", header=True, index=True)  
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
     finalDataFrame.to_csv("variables2.csv", header=True, index=True)  
-    return finalDataFrame
+    return finalDataFrame.reset_index()
 
 def read_flow(zip_files):
     ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
@@ -94,7 +94,7 @@ def read_flow(zip_files):
     finalDataFrame = pd.DataFrame(values, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
     finalDataFrame.to_csv("variables3.csv", header=True, index=True)  
-    return finalDataFrame
+    return finalDataFrame.reset_index()
 
 def enKF(forecast,obs_operator,observation):
     P = np.cov(forecast)
