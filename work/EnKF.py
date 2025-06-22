@@ -1,3 +1,4 @@
+#%%
 import glob
 import os
 import zipfile
@@ -49,17 +50,12 @@ def read_states(zip_files, fields):
                     results.append(row)
    
     finalDataFrame = pd.DataFrame(results, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
-    #finalDataFrame.to_csv("variables1.csv", header=True, index=True)  
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
-    finalDataFrame.to_csv("variables2.csv", header=True, index=True)  
+    finalDataFrame.to_csv("states.csv", header=True, index=True)  
     return finalDataFrame.reset_index()
 
 def read_flow(zip_files):
     ns = {'pi': 'http://www.wldelft.nl/fews/PI'}
-
-    # Initialize dictionary to store time series per file
-    data_dict = {}
-    df = pd.DataFrame(columns=['location', 'value'])
 
     values = []
     for zip_path in zip_files[1:]:
@@ -93,7 +89,7 @@ def read_flow(zip_files):
 
     finalDataFrame = pd.DataFrame(values, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
-    finalDataFrame.to_csv("variables3.csv", header=True, index=True)  
+    finalDataFrame.to_csv("simulations.csv", header=True, index=True)  
     return finalDataFrame.reset_index()
 
 def enKF(forecast,obs_operator,observation):
@@ -106,12 +102,12 @@ def enKF(forecast,obs_operator,observation):
     A = forecast + np.dot(gain,(observation-np.dot(obs_operator,forecast)))
     return A
 
-statesDataFrame = read_states(zip_state_files, fields)
-flowsDataFrame = read_flow(zip_xml_files)
-
-# ******************* ALGO NO FUNCITONA A CONTINUACION... *******************
-result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
-result.to_csv("readStates.csv", header=True, index=True)  
+# statesDataFrame = read_states(zip_state_files, fields)
+# flowsDataFrame = read_flow(zip_xml_files)
+# result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
+# result.to_csv("readStates.csv", header=True, index=False)  
+#%%
+ds = xr.open_dataset('dataIn.nc')
 
 ### STEP 1: READ ALL THE STATES FROM ZIP FILES - STATES AND FLOW 
 #read input.state
@@ -133,3 +129,5 @@ result.to_csv("readStates.csv", header=True, index=True)
 ### STEP 4: WRITE RESULTS BACK INTO TH BASIN.STATE FILE
 
 
+
+# %%
