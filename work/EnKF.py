@@ -108,7 +108,7 @@ flowsDataFrame = read_flow(zip_xml_files)
 result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
 result.to_csv("readStates.csv", header=True, index=False)  
 #%%
-ds = xr.open_dataset('dataIn.nc')
+ds = xr.open_dataset('dataQ.nc')
 df = ds.FLOW.to_dataframe()
 df = df.reset_index()
 df.to_csv("FLOW.csv", header=True, index=True)  
@@ -117,7 +117,23 @@ df.station_id = df.station_id.str.split("-").str[-1].str.strip()
 df = df.sort_values(by=['time', 'stations'], ascending=True).iloc[-49:]
 
 df = df[["station_id","FLOW"]]
-df.to_csv("FLOW2.csv", header=True, index=False)  
+
+
+#example of EnKF
+exclude = ['Subbasin', 'Ensemble', 'Variable']
+forecast = result.loc[result['Subbasin']=='SAM01', [col for col in result.columns if col not in exclude]]#.to_numpy()
+observation = df.loc[df['station_id']=='SAM01', 'FLOW'].to_numpy()
+
+#print([col for col in result.columns if col not in exclude])
+print('result \n', result)
+print('forecast \n', forecast)
+print('forecast - numpy \n', forecast.to_numpy())
+print('observation \n', observation)
+obs_operator = [0,0,1]
+
+analysis = enKF(forecast,obs_operator,observation)
+
+#df.to_csv("FLOW2.csv", header=True, index=False)  
 ### STEP 1: READ ALL THE STATES FROM ZIP FILES - STATES AND FLOW 
 #read input.state
 #read simulation.xml
