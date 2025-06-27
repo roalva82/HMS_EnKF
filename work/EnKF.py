@@ -8,7 +8,8 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import xarray as xr
 from datetime import datetime
-
+import matplotlib
+#%%
 # Paths
 path_to_zip_files = './'
 path_to_xml_files = './'
@@ -102,13 +103,21 @@ def enKF(forecast,obs_operator,observation):
     A = forecast + np.dot(gain,(observation-np.dot(obs_operator,forecast)))
     return A
 
-# statesDataFrame = read_states(zip_state_files, fields)
-# flowsDataFrame = read_flow(zip_xml_files)
-# result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
-# result.to_csv("readStates.csv", header=True, index=False)  
+statesDataFrame = read_states(zip_state_files, fields)
+flowsDataFrame = read_flow(zip_xml_files)
+result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
+result.to_csv("readStates.csv", header=True, index=False)  
 #%%
 ds = xr.open_dataset('dataIn.nc')
+df = ds.FLOW.to_dataframe()
+df = df.reset_index()
+df.to_csv("FLOW.csv", header=True, index=True)  
+df.station_id = df.station_id.astype("string")
+df.station_id = df.station_id.str.split("-").str[-1].str.strip()
+df = df.sort_values(by=['time', 'stations'], ascending=True).iloc[-49:]
 
+df = df[["station_id","FLOW"]]
+df.to_csv("FLOW2.csv", header=True, index=False)  
 ### STEP 1: READ ALL THE STATES FROM ZIP FILES - STATES AND FLOW 
 #read input.state
 #read simulation.xml
