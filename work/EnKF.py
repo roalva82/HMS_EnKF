@@ -93,14 +93,14 @@ def read_flow(zip_files):
     finalDataFrame.to_csv("simulations.csv", header=True, index=True)  
     return finalDataFrame.reset_index()
 
-def enKF(forecast,obs_operator,observation):
+def enKF(forecast,obs_operator,observation, R):
     P = np.cov(forecast)
-    R = np.cov(observation)
-    num = np.dot(P,np.transpose(obs_operator))
-    den = np.dot(obs_operator,num) + R
+    #R = np.cov(observation)
+    num = np.dot(P, np.transpose(obs_operator))
+    den = np.dot(obs_operator, num) + R
     temp = np.linalg.inv(den)
-    gain = np.dot(num,temp)
-    A = forecast + np.dot(gain,(observation-np.dot(obs_operator,forecast)))
+    gain = np.dot(num, temp)
+    A = forecast + np.dot(gain, (observation - np.dot(obs_operator, forecast)))
     return A
 
 statesDataFrame = read_states(zip_state_files, fields)
@@ -114,25 +114,26 @@ df = df.reset_index()
 df.to_csv("FLOW.csv", header=True, index=True)  
 df.station_id = df.station_id.astype("string")
 df.station_id = df.station_id.str.split("-").str[-1].str.strip()
-df = df.sort_values(by=['time', 'stations'], ascending=True).iloc[-49:]
+df = df.sort_values(by=['time'], ascending=True)
 
 df = df[["station_id","FLOW"]]
 
-
 #example of EnKF
 exclude = ['Subbasin', 'Ensemble', 'Variable']
-forecast = result.loc[result['Subbasin']=='SAM01', [col for col in result.columns if col not in exclude]]#.to_numpy()
-observation = df.loc[df['station_id']=='SAM01', 'FLOW'].to_numpy()
+forecast = result.loc[result['Subbasin']=='SAM01', [col for col in result.columns if col not in exclude]].to_numpy()
+observation = df.loc[df['station_id']=='SAM01','FLOW'].iloc[-1]
+forecast = forecast.astype(float)
 
-#print([col for col in result.columns if col not in exclude])
-print('result \n', result)
-print('forecast \n', forecast)
-print('forecast - numpy \n', forecast.to_numpy())
-print('observation \n', observation)
-obs_operator = [0,0,1]
+ensembles = forecast.shape[1]
+observation = np.repeat(observation, ensembles)
+obs_operator = np.array([[0,0,1]])
 
-analysis = enKF(forecast,obs_operator,observation)
+obs_variance = 1e-4
+analysis = enKF(forecast,obs_operator,observation, obs_variance)
 
+print(forecast)
+print(observation)
+print(analysis)
 #df.to_csv("FLOW2.csv", header=True, index=False)  
 ### STEP 1: READ ALL THE STATES FROM ZIP FILES - STATES AND FLOW 
 #read input.state
