@@ -103,34 +103,36 @@ def enKF(forecast,obs_operator,observation, R):
     A = forecast + np.dot(gain, (observation - np.dot(obs_operator, forecast)))
     return A
 
+def read_observations(fileName):
+    ds = xr.open_dataset(fileName)
+    df = ds.FLOW.to_dataframe()
+    df = df.reset_index()
+    df.to_csv("FLOW.csv", header=True, index=True)  
+    df.station_id = df.station_id.astype("string")
+    df.station_id = df.station_id.str.split("-").str[-1].str.strip()
+    df = df.sort_values(by=['time'], ascending=True)
+    df = df[["station_id","FLOW"]]
+    return df
+
+#%%
 statesDataFrame = read_states(zip_state_files, fields)
 flowsDataFrame = read_flow(zip_xml_files)
-result = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
-result.to_csv("readStates.csv", header=True, index=False)  
-#%%
-ds = xr.open_dataset('dataQ.nc')
-df = ds.FLOW.to_dataframe()
-df = df.reset_index()
-df.to_csv("FLOW.csv", header=True, index=True)  
-df.station_id = df.station_id.astype("string")
-df.station_id = df.station_id.str.split("-").str[-1].str.strip()
-df = df.sort_values(by=['time'], ascending=True)
-
-df = df[["station_id","FLOW"]]
-
-#example of EnKF
+simulations = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
+simulations.to_csv("readStates.csv", header=True, index=False)  
+observations = read_observations('dataQ.nc')
+#%% example of EnKF
 exclude = ['Subbasin', 'Ensemble', 'Variable']
-forecast = result.loc[result['Subbasin']=='SAM01', [col for col in result.columns if col not in exclude]].to_numpy()
-observation = df.loc[df['station_id']=='SAM01','FLOW'].iloc[-1]
-forecast = forecast.astype(float)
+simulation = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col not in exclude]].to_numpy()
+observation = observations.loc[observations['station_id']=='SAM01','FLOW'].iloc[-1]
+forecast = simulation.astype(float)
 
-ensembles = forecast.shape[1]
+ensembles = simulation.shape[1]
 observation = np.repeat(observation, ensembles)
 obs_operator = np.array([[0,0,1]])
 
 obs_variance = 1e-4
+#%% example of EnKF
 analysis = enKF(forecast,obs_operator,observation, obs_variance)
-
 print(forecast)
 print(observation)
 print(analysis)
