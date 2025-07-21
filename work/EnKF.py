@@ -11,9 +11,31 @@ from datetime import datetime
 import matplotlib
 #%%
 # Paths
-path_to_zip_files = './'
-path_to_xml_files = './'
+
+path_to_zip_files = sys.argv[1]
+path_to_xml_files = sys.argv[2]
 fields = ['Canopy Storage', 'Soil Storage']
+
+idmap = {
+    'SAM01':'FLORID',
+    'SCA01':'CARAPA',
+    'SFF01':'SAOFFA',
+    'SFV01':'SAOFVE',
+    'SIG01':'ESTIGU',
+    'SIH01':'IVINHE',
+    'SIH02':'IVINHE',
+    'SIH03':'IVINHE',
+    'SIH04':'IVINHE',
+    'SIV01':'TERCRI',
+    'SIV02':'UBASUL',
+    'SIV03':'BARFER',
+    'SIV04':'PORPNO',
+    'SIV05':'NOVPTA',
+    'SPQ01':'PEQMUN',
+    'SPQ02':'BALCAN',
+    'SPQ03':'NOVPDO',
+    'SPQ04':'NOVBSM'
+}
 
 # Get list of zip files in the target directory
 zip_state_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_states_*.zip'))
@@ -98,11 +120,10 @@ def enKF(forecast,obs_operator,observation, R):
     #R = np.cov(observation)
     num = np.dot(P, np.transpose(obs_operator))
     den = np.dot(obs_operator, num) + R
-    print('covariance\n', P)
     temp = np.linalg.inv(den)
     gain = np.dot(num, temp)
     A = forecast + np.dot(gain, (observation - np.dot(obs_operator, forecast)))
-    return A
+    return A, P, gain
 
 def read_observations(fileName):
     ds = xr.open_dataset(fileName)
@@ -161,39 +182,41 @@ try:
     simulations.to_csv("readStates.csv", header=True, index=False)
 except:
     pass
+
 observations = read_observations('dataQ.nc')
 
-#%% example of EnKF
 exclude = ['Subbasin', 'Variable']
-simulation = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col not in exclude]].to_numpy()
-observation = observations.loc[observations['station_id']=='SAM01','FLOW'].iloc[-1]
-forecast = simulation.astype(float)
+for sub, flow in zip(idmap.keys(), idmap.values()):
+    simulation = simulations.loc[simulations['Subbasin']==sub, [col for col in simulations.columns if col not in exclude]].to_numpy().astype(float)
+    observation = observations.loc[observations['station_id']==flow,'FLOW'].iloc[-1]
+    ensembles = simulation.shape[1]
+    observation = np.repeat(observation, ensembles)
 
+    obs_operator = np.zeros((1,len(simulation)))
+    obs_operator[0,-1] = 1
 
-###example for Porto Ivinhema
-#simulation = simulations.loc[simulations['Subbasin']=='SIH01', [col for col in simulations.columns if col not in exclude]].to_numpy()
-#observation = observations.loc[observations['station_id']=='SIH04','FLOW'].iloc[-1]
-###example for Porto Ivinhema
+    obs_variance = 1e-4 * np.mean(simulation, axis=1)[-1]
+    analysis, covariance, gain = enKF(simulation,obs_operator,observation, obs_variance)
+    
+    mean_analysis = np.mean(analysis, axis=1)
 
-ensembles = simulation.shape[1]
-observation = np.repeat(observation, ensembles)
-obs_operator = np.array([[0,0,1]])
+    print('Subbasin: ', sub, '\n')
+    print('obs operator\n', obs_operator)
+    print('covariance\n', covariance)
+    print('gain\n', gain)
+    print('simulation\n', simulation)
+    print('obs\n', observation)
+    print('analysis\n', analysis)
+    print('mean analysis', mean_analysis, '\n \n')
+    break
 
-obs_variance = 1e-4
-#%% example of EnKF
-analysis = enKF(forecast,obs_operator,observation, obs_variance)
 '''
-print('forecast\n', forecast)
-print('obs\n', observation)
-print('analysis\n', analysis)
 '''
-mean_analysis = np.mean(analysis, axis=1)
-print('mean analysis', mean_analysis)
 
+'''
 test = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col in exclude]].to_numpy()
 df = pd.DataFrame([mean_analysis], columns=test)
 print(df)
-
 
 zip_path = 'ensemble_states_0.zip'
 file_to_extract = 'Input.state'
@@ -224,6 +247,8 @@ with open(extract_to + file_to_extract, 'r') as file:
 
 with open(extract_to + file_to_extract, 'w') as file:
     file.write(updated_text)
+
+'''
 
 '''
 ## WRITE STATES BACK TO THE TEXT
