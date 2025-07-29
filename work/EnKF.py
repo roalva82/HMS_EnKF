@@ -12,8 +12,8 @@ import matplotlib
 #%%
 # Paths
 
-path_to_zip_files = sys.argv[1]
-path_to_xml_files = sys.argv[2]
+path_to_zip_files = './'#sys.argv[1]
+path_to_xml_files = './'#sys.argv[2]
 fields = ['Canopy Storage', 'Soil Storage']
 
 idmap = {
@@ -186,6 +186,8 @@ except:
 observations = read_observations('dataQ.nc')
 
 exclude = ['Subbasin', 'Variable']
+storage_values = {}
+
 for sub, flow in zip(idmap.keys(), idmap.values()):
     simulation = simulations.loc[simulations['Subbasin']==sub, [col for col in simulations.columns if col not in exclude]].to_numpy().astype(float)
     observation = observations.loc[observations['station_id']==flow,'FLOW'].iloc[-1]
@@ -208,15 +210,10 @@ for sub, flow in zip(idmap.keys(), idmap.values()):
     print('obs\n', observation)
     print('analysis\n', analysis)
     print('mean analysis', mean_analysis, '\n \n')
-    break
 
-'''
-'''
+    values = [mean_analysis[0], mean_analysis[1]]   # depends on declared fields!!!
+    storage_values[sub] = dict(zip(fields, values))
 
-'''
-test = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col in exclude]].to_numpy()
-df = pd.DataFrame([mean_analysis], columns=test)
-print(df)
 
 zip_path = 'ensemble_states_0.zip'
 file_to_extract = 'Input.state'
@@ -225,6 +222,22 @@ extract_to = './updates/'
 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
     if file_to_extract in zip_ref.namelist():
         zip_ref.extract(file_to_extract, extract_to)
+
+with open(extract_to + file_to_extract, 'r') as file:
+    content = file.read()
+    pattern = r"(Subbasin:\s*(\w+)(?:.|\n)*?End:)"
+    updated_text = re.sub(pattern, update_block, content)
+
+
+with open(extract_to + file_to_extract, 'w') as file:
+    file.write(updated_text)
+
+
+
+'''
+test = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col in exclude]].to_numpy()
+df = pd.DataFrame([mean_analysis], columns=test)
+print(df)
 
 
 ####COMENTARIO PARA SERGIO: CONVERTIR mean_analysis A UN DICCIONARIO COMO EL SIGUIENTE:
@@ -239,15 +252,6 @@ storage_values = {
     }
 }
 
-with open(extract_to + file_to_extract, 'r') as file:
-    content = file.read()
-    pattern = r"(Subbasin:\s*(\w+)(?:.|\n)*?End:)"
-    updated_text = re.sub(pattern, update_block, content)
-
-
-with open(extract_to + file_to_extract, 'w') as file:
-    file.write(updated_text)
-
 '''
 
 '''
@@ -257,7 +261,6 @@ with open(extract_to + file_to_extract, 'w') as file:
 
 
 # Apply replacements
-updated_text = re.sub(pattern, update_block, text)
 
 print(updated_text)
 '''
