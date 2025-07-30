@@ -14,7 +14,7 @@ import matplotlib
 
 path_to_zip_files = './'#sys.argv[1]
 path_to_xml_files = './'#sys.argv[2]
-fields = ['Canopy Storage', 'Soil Storage']
+fields = ['Canopy Storage', 'Surface Storage', 'Soil Storage', 'Groundwater Storage']
 
 idmap = {
     'SAM01':'FLORID',
@@ -141,36 +141,46 @@ def update_block(match):
     subbasin_id = match.group(2)
 
     values = storage_values.get(subbasin_id)
+
     if not values:
         return block  # leave unchanged if no values
-
-    # Update Soil Storage
-    if "Soil Storage" in values:
-        block = re.sub(
-            r"(Soil Storage:\s*)([^\s]+)",
-            lambda m: m.group(1) + str(values["Soil Storage"]),
-            block
-        )
 
     # Update Groundwater Storage values
     if "Groundwater Storage" in values:
         gw_values = values["Groundwater Storage"]
         
-        # Replacement function that consumes values in order
-        def replace_gw(m):
-            if replace_gw.index < len(gw_values):
-                val = gw_values[replace_gw.index]
-                replace_gw.index += 1
-                return m.group(1) + str(val)
-            else:
-                return m.group(0)  # no change if we run out of values
+        if gw_values is None or (isinstance(gw_values, float) and np.isnan(gw_values)):
+            return block
+        else:
+            # Replacement function that consumes values in order
+            def replace_gw(m):
+                if replace_gw.index < len(gw_values):
+                    val = gw_values[replace_gw.index]
+                    replace_gw.index += 1
+                    return m.group(1) + str(val)
+                else:
+                    return m.group(0)  # no change if we run out of values
 
-        replace_gw.index = 0
-        block = re.sub(
-            r"(Groundwater Storage:\s*)([^\s]+)",
-            replace_gw,
-            block
-        )
+            replace_gw.index = 0
+            block = re.sub(
+                r"(Groundwater Storage:\s*)([^\s]+)",
+                replace_gw,
+                block
+            )
+
+    # Update all other fields that have a unique value
+    else:
+        for field in fields:
+            if field in values:
+                value = values[field]
+                if value is None or (isinstance(value, float) and np.isnan(value)):
+                    return block
+                else:
+                    block = re.sub(
+                        r"({field}:\s*)([^\s]+)",
+                        lambda m: m.group(1) + str(values[field]),
+                        block
+                    )
 
     return block
 
@@ -211,7 +221,7 @@ for sub, flow in zip(idmap.keys(), idmap.values()):
     print('analysis\n', analysis)
     print('mean analysis', mean_analysis, '\n \n')
 
-    values = [mean_analysis[0], mean_analysis[1]]   # depends on declared fields!!!
+    values = [mean_analysis[0], mean_analysis[1], mean_analysis[2], [mean_analysis[3], mean_analysis[4]]]   # depends on declared fields!!!
     storage_values[sub] = dict(zip(fields, values))
 
 
