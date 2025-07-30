@@ -8,13 +8,20 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import xarray as xr
 from datetime import datetime
-import matplotlib
+import logging
+import sys
+import shutil
+import time
+
 #%%
 # Paths
-
 path_to_zip_files = './'#sys.argv[1]
 path_to_xml_files = './'#sys.argv[2]
+path_to_state_file = './updates/Input.state'#sys.argv[3]
+
+diagnostics = []
 fields = ['Canopy Storage', 'Surface Storage', 'Soil Storage', 'Groundwater Storage']
+fields.sort()
 
 idmap = {
     'SAM01':'FLORID',
@@ -41,6 +48,34 @@ idmap = {
 zip_state_files = glob.glob(os.path.join(path_to_zip_files, 'ensemble_states_*.zip'))
 zip_xml_files = glob.glob(os.path.join(path_to_xml_files, 'ensemble_simulation_*.zip'))
 
+import xml.etree.ElementTree as ET
+
+def write_diagnostics_xml(diagnostics, file_path):
+    # Root element with namespaces
+    ns = {
+        "": "http://www.wldelft.nl/fews/PI",
+        "xsi": "http://www.w3.org/2001/XMLSchema-instance"
+    }
+    ET.register_namespace("", ns[""])
+    ET.register_namespace("xsi", ns["xsi"])
+
+    root = ET.Element("Diag", {
+        "version": "1.2",
+        "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation":
+            "http://www.wldelft.nl/fews/PI http://fews.wldelft.nl/schemas/version1.0/pi-schemas/pi_diag.xsd"
+    })
+
+    for diag in diagnostics:
+        line = ET.SubElement(root, "line")
+        line.set("level", str(diag["level"]))
+        line.set("description", diag["description"])
+        if "eventCode" in diag:
+            line.set("eventCode", diag["eventCode"])
+
+    # Write to file
+    tree = ET.ElementTree(root)
+    tree.write(file_path, encoding="utf-8", xml_declaration=True)
+
 def read_states(zip_files, fields):
     results = []
     # Loop through zip files (skip the first one)
@@ -51,7 +86,7 @@ def read_states(zip_files, fields):
                 with zip_ref.open('Input.state') as file:
                     text = file.read().decode('utf-8')
             except KeyError:
-                print(f"Warning: 'Input.state' not found in {zip_path}")
+                diagnostics.append({"level": 2, f"description": "Warning: 'Input.state' not found in {zip_path}"})
                 continue  # Skip if file doesn't exist
 
         #split the file in "Subbasin: ... end:" blocks    
@@ -64,8 +99,6 @@ def read_states(zip_files, fields):
                 k = 0
                 variable = variable.replace(":","") + "_"
                 for value in values:
-                    #fileName = str.replace(zip_ref.filename.split("\\")[-1],".zip","")
-                    
                     raw_name = zip_ref.filename.split("\\")[-1]
                     fileName = raw_name.replace("_states", "").replace(".zip", "")
                     row = [fileName, subbasin[0], variable + str(k), value[0]]
@@ -74,7 +107,7 @@ def read_states(zip_files, fields):
    
     finalDataFrame = pd.DataFrame(results, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
-    finalDataFrame.to_csv("states.csv", header=True, index=True)  
+    finalDataFrame.to_csv("states.csv", header=True, index=True)
     return finalDataFrame.reset_index()
 
 def read_flow(zip_files):
@@ -99,7 +132,6 @@ def read_flow(zip_files):
                             if date is not None and time is not None and value is not None:
                                 raw_name = zip_ref.filename.split("\\")[-1]
                                 fileName = raw_name.replace("_simulation", "").replace(".zip", "")
-                        #        fileName = str.replace(zip_ref.filename.split("\\")[-1],".zip","")
                                 format = '%Y-%m-%d_%H:%M:%S'
                                 temp = datetime.strptime(date + '_' + time, format)
                                 row = [location, temp, value]
@@ -107,21 +139,24 @@ def read_flow(zip_files):
                                 values.append(row)
 
             except KeyError:
-                print(f"Warning: 'simulation.xml' not found in {zip_path}")
+                diagnostics.append({"level": 2, "description": f"Warning: 'simulation.xml' not found in {zip_path}"})
                 continue  # Skip if file doesn't exist
 
     finalDataFrame = pd.DataFrame(values, columns=['Ensemble','Subbasin', 'Variable', 'Value'])
     finalDataFrame = pd.pivot_table(finalDataFrame, values='Value', index=['Subbasin', 'Variable'], columns='Ensemble', aggfunc="sum")
-    finalDataFrame.to_csv("simulations.csv", header=True, index=True)  
     return finalDataFrame.reset_index()
 
-def enKF(forecast,obs_operator,observation, R):
+def enKF(forecast, obs_operator, observation, R):
     P = np.cov(forecast)
-    #R = np.cov(observation)
+    #R = np.cov(observation) #used when observation matrix is probabilistic
     num = np.dot(P, np.transpose(obs_operator))
     den = np.dot(obs_operator, num) + R
     temp = np.linalg.inv(den)
     gain = np.dot(num, temp)
+    if np.any(gain > 1):
+        diagnostics.append({"level": 2, "description": "Warning: Kalman gain is bigger than 1 - high trust on measurement"})
+    if np.any(gain < 0):
+        diagnostics.append({"level": 1, "description": "ERROR: Kalman gain is less than 0 - potential unstable behaviour"})
     A = forecast + np.dot(gain, (observation - np.dot(obs_operator, forecast)))
     return A, P, gain
 
@@ -129,7 +164,6 @@ def read_observations(fileName):
     ds = xr.open_dataset(fileName)
     df = ds.FLOW.to_dataframe()
     df = df.reset_index()
-    df.to_csv("FLOW.csv", header=True, index=True)  
     df.station_id = df.station_id.astype("string")
     df.station_id = df.station_id.str.split("-").str[-1].str.strip()
     df = df.sort_values(by=['time'], ascending=True)
@@ -185,20 +219,22 @@ def update_block(match):
     return block
 
 #%%
+diagnostics.append({"level": 3, "description": "Started reading model simulations."})
 statesDataFrame = read_states(zip_state_files, fields)
 flowsDataFrame = read_flow(zip_xml_files)
 simulations = pd.concat([statesDataFrame, flowsDataFrame], ignore_index=True)
-try:
-    simulations.to_csv("readStates.csv", header=True, index=False)
-except:
-    pass
+simulations.to_csv("simulations.csv", header=True, index=False)
 
+#%%
+diagnostics.append({"level": 3, "description": "Started reading observations."})
 observations = read_observations('dataQ.nc')
 
+#%%
 exclude = ['Subbasin', 'Variable']
 storage_values = {}
 
 for sub, flow in zip(idmap.keys(), idmap.values()):
+    diagnostics.append({"level": 3, "description": f"Started updating model states for {sub}."})
     simulation = simulations.loc[simulations['Subbasin']==sub, [col for col in simulations.columns if col not in exclude]].to_numpy().astype(float)
     observation = observations.loc[observations['station_id']==flow,'FLOW'].iloc[-1]
     ensembles = simulation.shape[1]
@@ -212,6 +248,15 @@ for sub, flow in zip(idmap.keys(), idmap.values()):
     
     mean_analysis = np.mean(analysis, axis=1)
 
+    diagnostics.append({"level": 4, "description": f"Simulations for subbasin {sub}: {simulation}."})
+    diagnostics.append({"level": 4, "description": f"Observations for subbasin {sub}: {observation}."})
+    diagnostics.append({"level": 4, "description": f"Observation operator for subbasin {sub}: {obs_operator}."})
+    diagnostics.append({"level": 4, "description": f"Covariance matrix for {sub}: {covariance}."})
+    diagnostics.append({"level": 4, "description": f"Kalman gain {sub}: {gain}."})
+    diagnostics.append({"level": 4, "description": f"Analysis for {sub}: {analysis}."})
+    diagnostics.append({"level": 4, "description": f"Mean analysis for {sub}: {mean_analysis}."})
+
+    '''
     print('Subbasin: ', sub, '\n')
     print('obs operator\n', obs_operator)
     print('covariance\n', covariance)
@@ -220,8 +265,9 @@ for sub, flow in zip(idmap.keys(), idmap.values()):
     print('obs\n', observation)
     print('analysis\n', analysis)
     print('mean analysis', mean_analysis, '\n \n')
+    '''
 
-    values = [mean_analysis[0], mean_analysis[1], mean_analysis[2], [mean_analysis[3], mean_analysis[4]]]   # depends on declared fields!!!
+    values = [mean_analysis[0], [mean_analysis[1], mean_analysis[2]], mean_analysis[3], mean_analysis[4]]   # depends on declared fields!!!
     storage_values[sub] = dict(zip(fields, values))
 
 
@@ -229,6 +275,7 @@ zip_path = 'ensemble_states_0.zip'
 file_to_extract = 'Input.state'
 extract_to = './updates/'
 
+diagnostics.append({"level": 3, "description": f"Writing updated states back to {file_to_extract}."})
 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
     if file_to_extract in zip_ref.namelist():
         zip_ref.extract(file_to_extract, extract_to)
@@ -242,15 +289,14 @@ with open(extract_to + file_to_extract, 'r') as file:
 with open(extract_to + file_to_extract, 'w') as file:
     file.write(updated_text)
 
+# Copy the file to the state directory
+#shutil.copy(extract_to + file_to_extract, path_to_state_file)
 
+write_diagnostics_xml(diagnostics, "piDiagnostic.xml")
 
 '''
-test = simulations.loc[simulations['Subbasin']=='SAM01', [col for col in simulations.columns if col in exclude]].to_numpy()
-df = pd.DataFrame([mean_analysis], columns=test)
-print(df)
+#### FROM mean_analysis TO DICTIONARY:
 
-
-####COMENTARIO PARA SERGIO: CONVERTIR mean_analysis A UN DICCIONARIO COMO EL SIGUIENTE:
 storage_values = {
     "SIH02": {
         "Soil Storage": 1.1,
@@ -261,16 +307,4 @@ storage_values = {
         "Groundwater Storage": [0.03, 0.04]
     }
 }
-
-'''
-
-'''
-## WRITE STATES BACK TO THE TEXT
-# Pattern to extract each Subbasin block
-"
-
-
-# Apply replacements
-
-print(updated_text)
 '''
