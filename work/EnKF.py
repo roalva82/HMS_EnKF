@@ -156,7 +156,7 @@ def enKF(forecast, obs_operator, observation, R):
     if np.any(gain > 1):
         diagnostics.append({"level": 2, "description": "Warning: Kalman gain is bigger than 1 - high trust on measurement"})
     if np.any(gain < 0):
-        diagnostics.append({"level": 1, "description": "ERROR: Kalman gain is less than 0 - potential unstable behaviour"})
+        diagnostics.append({"level": 2, "description": "Warning: Kalman gain is less than 0 - potential unstable behaviour"})
     A = forecast + np.dot(gain, (observation - np.dot(obs_operator, forecast)))
     return A, P, gain
 
@@ -243,7 +243,7 @@ for sub, flow in zip(idmap.keys(), idmap.values()):
     obs_operator = np.zeros((1,len(simulation)))
     obs_operator[0,-1] = 1
 
-    obs_variance = 1e-4 * np.mean(simulation, axis=1)[-1]
+    obs_variance = 1e-2 * np.mean(simulation, axis=1)[-1]
     analysis, covariance, gain = enKF(simulation,obs_operator,observation, obs_variance)
     
     mean_analysis = np.mean(analysis, axis=1)
